@@ -4,3 +4,6 @@ __pycache__/
 .ruff_cache/
 # Rebuilt in a minute or two with `python -m motion_forecast.data`.
 data/
+# MLflow's local store. Where it lives for the scheduled runs is decided in M6.
+mlflow.db
+mlruns/
