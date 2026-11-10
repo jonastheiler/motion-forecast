@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+# Rebuilt in a minute or two with `python -m motion_forecast.data`.
+data/
