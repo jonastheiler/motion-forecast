@@ -4,13 +4,14 @@ Predicts whether the Swiss Federal Council will propose to accept or reject a ne
 or Postulat, from what is known when it is submitted: its text, its author's party, the
 council and the department. A project to learn the MLflow model lifecycle.
 
-Unofficial. Data: [Swiss Parliament open data](https://www.parlament.ch/de/%C3%BCber-das-parlament/fakten-und-zahlen/open-data-web-services) (ws.parlament.ch).
+Unofficial. Data: [Swiss Parliament open data web service](https://ws.parl.ch/doc/swagger-ui/index.html)
+(ws.parl.ch). It needs an API key; set it as `PARL_API_KEY`.
 
 ## Run
 
 ```
 uv sync
-uv run python -m motion_forecast.data    # download ~20k Motionen and Postulate (~2 min)
+uv run python -m motion_forecast.data    # download ~20k Motionen and Postulate (~5 min)
 uv run python -m motion_forecast.train   # model ladder, tracked in MLflow (~3 min)
 uv run mlflow ui                         # compare the runs at http://localhost:5000
 uv run pytest
@@ -26,7 +27,7 @@ Trained on Motionen and Postulate answered 2007-2022, tested on those submitted 
 | Majority (always 20%) | 0.506 | 0.162 | 0.20 | 0.50 |
 | Metadata (party, council, type, department) | 0.431 | 0.136 | 0.46 | 0.76 |
 | Text (TF-IDF) | 0.444 | 0.142 | 0.43 | 0.74 |
-| Text + metadata | **0.414** | **0.131** | **0.50** | **0.79** |
+| Text + metadata | **0.413** | **0.131** | **0.50** | **0.79** |
 
 Who asks says more than what they ask: metadata alone beats the text alone. Committee
 Motionen are accepted half the time, SVP Motionen 9%. The words still add information

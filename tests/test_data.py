@@ -1,57 +1,72 @@
-import pandas as pd
 import pytest
 
-from motion_forecast.data import build, clean_html, parse_date, validate
+from motion_forecast.data import build, clean_html, validate
 
 
-def make_tables():
-    business = pd.DataFrame(
-        {
-            "ID": [20261001, 20261002, 20261003, 20261004],
-            "BusinessShortNumber": ["26.1001", "26.1002", "26.1003", "26.1004"],
-            "BusinessType": [5, 6, 5, 5],
-            "SubmissionDate": ["/Date(1793664000000)/"] * 4,
-            "SubmissionCouncilAbbreviation": ["NR", "SR", "NR", "NR"],
-            "ResponsibleDepartmentAbbreviation": ["EDI", "UVEK", "VBS", "EDI"],
-            "Title": ["A", "B", "C", "D"],
-            "SubmittedText": ["<p>Der Bundesrat&nbsp;wird beauftragt</p>", None, "x", "y"],
-            "ReasonText": [None, "<li>Grund</li>", "x", "y"],
-            "BusinessStatusText": ["Erledigt", "Erledigt", "Erledigt", "Eingereicht"],
-            # 45 = new code for reject, 18 = old code for accept, 2 = turn into a Postulat
-            "FederalCouncilProposal": [45, 18, 2, None],
-            "FederalCouncilProposalDate": ["/Date(1793664000000)/", None, None, None],
-        }
-    )
-    authors = pd.DataFrame(
-        {
-            "ID": ["a", "b", "c", "d"],
-            "BusinessNumber": [20261001, 20261002, 20261003, 20261004],
-            "MemberCouncilNumber": [1.0, None, None, 2.0],
-            "ParlGroupNumber": [None, 4.0, None, None],
-            "CommitteeNumber": [None, None, 12.0, None],
-        }
-    )
-    members = pd.DataFrame({"ID": [1, 2], "PartyAbbreviation": ["CVP", "EVP"]})
-    return business, authors, members
+def record(number, type_, authors, department, proposal=None, text="x"):
+    """A raw record from the service, trimmed to the fields build() reads."""
+    return {
+        "id": int(number.replace(".", "20", 1)),
+        "number": number,
+        "type": {"key": type_},
+        "submission": {"date": "2026-11-03", "council": {"abbreviation": "NR"}},
+        "title": "Titel",
+        "texts": {"submittedText": text, "statementOfReasons": "<li>Grund</li>"},
+        "response": {"date": "2027-01-15", "proposal": {"name": proposal}} if proposal else None,
+        "authors": authors,
+        "drafts": [
+            {"competentAuthorities": [{"leading": True, "authority": {"abbreviation": department}}]}
+        ],
+        "currentStatus": {"name": "Erledigt"},
+    }
+
+
+def member(party, group="Fraktion S"):
+    party = {"shortName": party} if party else None
+    return {"assemblyMembers": [{"party": party, "parliamentaryGroup": {"shortName": group}}]}
+
+
+def organ(kind, name):
+    return {"organ": [{"type": {"name": kind}, "shortName": name}]}
+
+
+def make_rows():
+    return [
+        record("26.1001", "MOTION", member("CVP"), "EDI", "Ablehnung", "<p>Der&nbsp;Bundesrat</p>"),
+        record("26.1002", "POSTULAT", organ("Fraktion", "Fraktion V"), "EVD", "Annahme"),
+        record("26.1003", "MOTION", organ("Kommission", "SGK-N"), "VBS", "Annahme (teilweise)"),
+        record("26.1004", "MOTION", member("EVP"), "EDI"),
+    ]
 
 
 def test_build_labels_only_clear_yes_or_no():
-    df = build(*make_tables())
-    # Reject, accept, "turn into a Postulat" (no label), not yet answered (no label).
+    df = build(make_rows())
+    # Reject, accept, partial acceptance (no label), not yet answered (no label).
     assert df["label"].tolist()[:2] == [0, 1]
     assert df["label"].iloc[2:].isna().all()
 
 
-def test_build_drops_records_sent_twice():
-    business, authors, members = make_tables()
-    business = pd.concat([business, business.iloc[[0]]])
-    assert build(business, authors, members)["id"].is_unique
-
-
 def test_build_maps_authors_to_todays_parties():
-    df = build(*make_tables())
+    df = build(make_rows())
     # CVP member -> Mitte, SVP group -> SVP, a committee, a small party -> Andere.
     assert df["party"].tolist() == ["Mitte", "SVP", "Kommission", "Andere"]
+
+
+def test_build_falls_back_to_group_for_members_without_party():
+    rows = [record("26.1005", "MOTION", member(None, "Fraktion RL"), "EDI", "Annahme")]
+    assert build(rows)["party"].tolist() == ["FDP"]
+
+
+def test_build_uses_todays_department_names():
+    assert build(make_rows())["department"].tolist() == ["EDI", "WBF", "VBS", "EDI"]
+
+
+def test_build_reads_types_texts_and_dates():
+    df = build(make_rows())
+    assert df["type"].tolist() == ["Motion", "Postulat", "Motion", "Motion"]
+    assert df["text"].iloc[0] == "Der Bundesrat"
+    assert str(df["submitted"].iloc[0].date()) == "2026-11-03"
+    assert df["proposal_date"].isna().tolist() == [False, False, False, True]
 
 
 def test_clean_html_keeps_only_words():
@@ -61,22 +76,16 @@ def test_clean_html_keeps_only_words():
     assert clean_html(None) == ""
 
 
-def test_parse_date_reads_odata_dates():
-    dates = parse_date(pd.Series(["/Date(1793664000000)/", None]))
-    assert dates.iloc[0] == pd.Timestamp("2026-11-03")
-    assert pd.isna(dates.iloc[1])
-
-
 def test_validate_accepts_clean_data():
-    validate(build(*make_tables()), min_labelled=2)
+    validate(build(make_rows()), min_labelled=2)
 
 
 def test_validate_rejects_duplicates():
-    df = build(*make_tables()).assign(id=1)
+    df = build(make_rows()).assign(id=1)
     with pytest.raises(ValueError, match="duplicate"):
         validate(df, min_labelled=0)
 
 
 def test_validate_rejects_incomplete_download():
     with pytest.raises(ValueError, match="incomplete"):
-        validate(build(*make_tables()), min_labelled=3)
+        validate(build(make_rows()), min_labelled=3)
