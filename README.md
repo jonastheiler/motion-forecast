@@ -12,6 +12,7 @@ Unofficial. Data: [Swiss Parliament open data web service](https://ws.parl.ch/do
 ```
 uv sync
 uv run python -m motion_forecast.data    # download ~20k Motionen and Postulate (~5 min)
+uv run python -m motion_forecast.embed   # embed the texts with a language model (~1 h on a CPU)
 uv run python -m motion_forecast.train   # model ladder, tracked in MLflow (~3 min)
 uv run mlflow ui                         # compare the runs at http://localhost:5000
 uv run pytest
@@ -28,10 +29,17 @@ Trained on Motionen and Postulate answered 2007-2022, tested on those submitted 
 | Metadata (party, council, type, department) | 0.431 | 0.136 | 0.46 | 0.76 |
 | Text (TF-IDF) | 0.444 | 0.142 | 0.43 | 0.74 |
 | Text + metadata | **0.413** | **0.131** | **0.50** | **0.79** |
+| Embedding (multilingual-e5-small) | 0.459 | 0.147 | 0.39 | 0.72 |
+| Embedding + metadata | 0.418 | 0.133 | 0.49 | 0.79 |
 
 Who asks says more than what they ask: metadata alone beats the text alone. Committee
 Motionen are accepted half the time, SVP Motionen 9%. The words still add information
 on top.
+
+A pretrained language model's sentence vectors do worse than plain word counts, alone
+and with the metadata. The model was never trained for this task: its vector sums up
+what a text is about, while the word counts keep every single term for the classifier
+to weigh. Fine-tuning the language model on the labels is the next step to test.
 
 ## Key ideas
 
@@ -49,7 +57,8 @@ on top.
 
 - [x] M0 setup, M1 data
 - [x] M2 baselines and experiment tracking with MLflow
-- [ ] M3 embeddings and a fine-tuned transformer
+- [x] M3a sentence embeddings as features
+- [ ] M3b a fine-tuned transformer (needs a GPU)
 - [ ] M4 model registry and pyfunc
 - [ ] M5 serving
 - [ ] M6 weekly live forecast and monitoring

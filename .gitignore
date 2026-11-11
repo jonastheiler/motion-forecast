@@ -2,7 +2,7 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-# Rebuilt in a minute or two with `python -m motion_forecast.data`.
+# Rebuilt with `motion_forecast.data` (~5 min) and `motion_forecast.embed` (~1 h).
 data/
 # MLflow's local store. Where it lives for the scheduled runs is decided in M6.
 mlflow.db

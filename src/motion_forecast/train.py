@@ -27,6 +27,7 @@ from sklearn.metrics import (
 )
 
 from motion_forecast.data import load
+from motion_forecast.embed import load_embeddings
 from motion_forecast.models import LADDER, inputs
 
 EXPERIMENT = "model-ladder"
@@ -122,7 +123,10 @@ def run_stage(stage: str, data: dict[str, pd.DataFrame]) -> dict[str, float]:
 
 
 def main() -> None:
-    data = periods(load())
+    data = periods(load().merge(load_embeddings(), on="id", how="left"))
+    missing = sum(part["embedding"].isna().sum() for part in data.values())
+    if missing:
+        raise SystemExit(f"{missing} Motionen have no embedding: run motion_forecast.embed")
     for name, part in data.items():
         print(f"{name}: {len(part)} Motionen, {part['label'].mean():.1%} accepted")
 

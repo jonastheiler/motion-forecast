@@ -5,18 +5,22 @@ stages show what that information is worth.
     metadata:       who submitted it, where, and which department has to answer
     text:           only the words of the Motion
     text_metadata:  both
+    embedding:      the words as one vector from a pretrained language model (embed.py)
+    embedding_metadata: the vector and the metadata
 """
 
+import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 
 METADATA = ["type", "council", "party", "department"]
 WORDS = "words"
+EMBEDDING = "embedding"
 
 
 def inputs(df: pd.DataFrame) -> pd.DataFrame:
@@ -24,6 +28,8 @@ def inputs(df: pd.DataFrame) -> pd.DataFrame:
     x = df[METADATA].fillna("unknown")
     # One text per Motion: the title, what it asks for, and why.
     x[WORDS] = df["title"] + ". " + df["text"] + " " + df["reason"]
+    if EMBEDDING in df:  # computed from the words by embed.py, once
+        x[EMBEDDING] = df[EMBEDDING]
     return x
 
 
@@ -37,6 +43,16 @@ def tfidf(ngrams: int) -> tuple:
     # min_df=2 drops words that occur in a single Motion, mostly names and typos.
     vectorizer = TfidfVectorizer(ngram_range=(1, ngrams), min_df=2, sublinear_tf=True)
     return ("words", vectorizer, WORDS)
+
+
+def stack(vectors: pd.Series) -> np.ndarray:
+    """A column with one vector per Motion, as one matrix."""
+    return np.vstack(vectors.to_numpy())
+
+
+def vectors() -> tuple:
+    # The vectors are ready-made features: the language model is not trained here.
+    return ("embedding", FunctionTransformer(stack), EMBEDDING)
 
 
 def classifier(C: float) -> LogisticRegression:
@@ -61,10 +77,20 @@ def text_metadata(C: float, ngrams: int) -> Pipeline:
     return make_pipeline(ColumnTransformer([tfidf(ngrams), one_hot()]), classifier(C))
 
 
+def embedding(C: float) -> Pipeline:
+    return make_pipeline(ColumnTransformer([vectors()]), classifier(C))
+
+
+def embedding_metadata(C: float) -> Pipeline:
+    return make_pipeline(ColumnTransformer([vectors(), one_hot()]), classifier(C))
+
+
 # Each stage with the hyperparameters to try. C is the inverse regularisation strength.
 LADDER = {
     "majority": (majority, [{}]),
     "metadata": (metadata, [{"C": C} for C in [0.1, 1, 10]]),
     "text": (text, [{"C": C, "ngrams": n} for C in [1, 3, 10] for n in [1, 2]]),
     "text_metadata": (text_metadata, [{"C": C, "ngrams": n} for C in [1, 3, 10] for n in [1, 2]]),
+    "embedding": (embedding, [{"C": C} for C in [0.1, 0.3, 1, 3]]),
+    "embedding_metadata": (embedding_metadata, [{"C": C} for C in [0.1, 0.3, 1, 3]]),
 }

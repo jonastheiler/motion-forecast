@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -17,6 +18,7 @@ def make_motions(n: int = 40) -> pd.DataFrame:
             "title": ["Titel"] * n,
             "text": ["Bericht prüfen" if a else "Gesetz ändern" for a in accepted],
             "reason": ["Begründung"] * n,
+            "embedding": [np.array([1.0, 0.0]) if a else np.array([0.0, 1.0]) for a in accepted],
             "label": [float(a) for a in accepted],
             "submitted": pd.Timestamp("2010-01-01"),
             "proposal_date": pd.Timestamp("2010-03-01"),
