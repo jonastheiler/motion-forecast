@@ -79,6 +79,8 @@ Trained on Motionen and Postulate answered 2007-2022, tested on those submitted 
 | Embedding (multilingual-e5-small) | 0.459 | 0.147 | 0.39 | 0.72 |
 | Embedding + metadata | 0.418 | 0.133 | 0.49 | 0.79 |
 
+![The six stages compared in the MLflow UI](docs/ladder.png)
+
 Who asks says more than what they ask: metadata alone beats the text alone. Committee
 Motionen are accepted half the time, SVP Motionen 9%. The words still add information
 on top.
