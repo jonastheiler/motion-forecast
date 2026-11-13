@@ -4,6 +4,7 @@ __pycache__/
 .ruff_cache/
 # Rebuilt with `motion_forecast.data` (~5 min) and `motion_forecast.embed` (~1 h).
 data/
-# MLflow's local store. Where it lives for the scheduled runs is decided in M6.
+# MLflow's local store: the runs, the registry and its champion, and the live-forecast
+# runs all stay on the machine that runs `motion_forecast.forecast`.
 mlflow.db
 mlruns/

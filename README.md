@@ -53,6 +53,18 @@ curl http://127.0.0.1:5001/invocations -H "Content-Type: application/json" -d '{
 
 The alias is read at start-up: restart the server to pick up a new champion.
 
+## Live forecast
+
+```
+uv run python -m motion_forecast.forecast
+```
+
+Forecasts every open Motion with the champion, scores earlier forecasts the Federal
+Council has answered since, logs both to the `live-forecast` experiment in MLflow, and
+commits and pushes the new forecasts to [forecasts.csv](forecasts.csv). Run it every few
+weeks: the answer comes after a median of 62 days, so a month between runs misses only
+the 2% answered faster.
+
 ## Results so far
 
 Trained on Motionen and Postulate answered 2007-2022, tested on those submitted since
@@ -96,6 +108,9 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
 - **Serving needs no server code.** `mlflow models serve` turns the pyfunc into an HTTP
   API that checks each request against the model's schema. `tests/test_serve.py` checks
   that contract in-process, without starting a server.
+- **Forecasts you can check.** `forecasts.csv` is only ever appended to, and git dates
+  each forecast before its answer. The live log loss is logged next to the champion's
+  test log loss: when it climbs well above, the model has gone stale.
 
 ## Status
 
@@ -105,4 +120,4 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
 - [ ] M3b a fine-tuned transformer (needs a GPU)
 - [x] M4 model registry and pyfunc
 - [x] M5 serving
-- [ ] M6 weekly live forecast and monitoring
+- [x] M6 live forecast and monitoring

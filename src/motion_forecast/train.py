@@ -37,14 +37,13 @@ from sklearn.metrics import (
 
 from motion_forecast.data import load
 from motion_forecast.embed import load_embeddings
-from motion_forecast.models import LADDER, RAW, MotionForecast, inputs
+from motion_forecast.models import LADDER, MODEL_NAME, RAW, MotionForecast, inputs
 
 EXPERIMENT = "model-ladder"
 FIRST = pd.Timestamp("2007-01-01")  # the acceptance rate fell from ~60% in the 1990s
 VALIDATION = pd.Timestamp("2019-01-01")
 TEST = pd.Timestamp("2023-01-01")
 
-MODEL_NAME = "motion-forecast"
 # A deployed model must work from the raw text alone. The embedding stages also need a
 # 470 MB language model at prediction time, so they compete in the ladder only.
 DEPLOYABLE = ["majority", "metadata", "text", "text_metadata"]

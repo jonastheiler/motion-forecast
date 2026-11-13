@@ -24,6 +24,8 @@ from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 METADATA = ["type", "council", "party", "department"]
 # What a caller sends: a Motion as it comes from the parliament, before any features.
 RAW = [*METADATA, "title", "text", "reason"]
+# The name the deployed model is registered under in MLflow.
+MODEL_NAME = "motion-forecast"
 WORDS = "words"
 EMBEDDING = "embedding"
 
