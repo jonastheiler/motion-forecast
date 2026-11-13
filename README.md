@@ -80,8 +80,9 @@ notebook, turn on a GPU accelerator and internet access in the settings, and add
 !cp data/finetuned.parquet /kaggle/working/
 ```
 
-Download `finetuned.parquet` from the notebook's output into your own `data/` folder,
-then log it as a stage of the ladder:
+Run it with Save Version > Save & Run All: an interactive session deletes its output
+when it stops. Download `finetuned.parquet` from the saved version's output into your
+own `data/` folder, then log it as a stage of the ladder:
 
 ```
 uv run python -m motion_forecast.finetune log
@@ -100,8 +101,9 @@ Trained on Motionen and Postulate answered 2007-2022, tested on those submitted 
 | Text + metadata | **0.413** | **0.131** | **0.50** | **0.79** |
 | Embedding (multilingual-e5-small) | 0.459 | 0.147 | 0.39 | 0.72 |
 | Embedding + metadata | 0.418 | 0.133 | 0.49 | 0.79 |
+| Fine-tuned (multilingual-e5-small) | 0.463 | 0.148 | 0.40 | 0.72 |
 
-![The six stages compared in the MLflow UI](docs/ladder.png)
+![The six embedding and baseline stages compared in the MLflow UI](docs/ladder.png)
 
 Who asks says more than what they ask: metadata alone beats the text alone. Committee
 Motionen are accepted half the time, SVP Motionen 9%. The words still add information
@@ -110,7 +112,10 @@ on top.
 A pretrained language model's sentence vectors do worse than plain word counts, alone
 and with the metadata. The model was never trained for this task: its vector sums up
 what a text is about, while the word counts keep every single term for the classifier
-to weigh. Fine-tuning the language model on the labels is the next step to test.
+to weigh. Fine-tuning the whole language model on the labels does no better than its
+frozen vectors (0.463 vs 0.459): with ~15k labelled texts, the extra 118M trained
+weights find no signal that word counts miss. Validation stopped it after 2 epochs,
+when it began to memorise the training years.
 
 ## Key ideas
 
@@ -141,7 +146,7 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
 - [x] M0 setup, M1 data
 - [x] M2 baselines and experiment tracking with MLflow
 - [x] M3a sentence embeddings as features
-- [ ] M3b a fine-tuned transformer (needs a GPU)
+- [x] M3b a fine-tuned transformer (on a Kaggle GPU)
 - [x] M4 model registry and pyfunc
 - [x] M5 serving
 - [x] M6 live forecast and monitoring
