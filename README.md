@@ -65,6 +65,28 @@ commits and pushes the new forecasts to [forecasts.csv](forecasts.csv). Run it e
 weeks: the answer comes after a median of 62 days, so a month between runs misses only
 the 2% answered faster.
 
+## Fine-tune on a GPU
+
+Fine-tuning the language model takes a GPU; a free Kaggle one will do. In a new Kaggle
+notebook, turn on a GPU accelerator and internet access in the settings, and add your
+`data/motions.parquet` as a dataset (Add Input > Upload). Then run:
+
+```
+!git clone https://github.com/jonastheiler/motion-forecast.git
+%cd motion-forecast
+!pip install -q -e .
+!mkdir -p data && cp $(find /kaggle/input -name motions.parquet) data/
+!python -m motion_forecast.finetune train
+!cp data/finetuned.parquet /kaggle/working/
+```
+
+Download `finetuned.parquet` from the notebook's output into your own `data/` folder,
+then log it as a stage of the ladder:
+
+```
+uv run python -m motion_forecast.finetune log
+```
+
 ## Results so far
 
 Trained on Motionen and Postulate answered 2007-2022, tested on those submitted since
