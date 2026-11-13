@@ -7,8 +7,11 @@ stages show what that information is worth.
     text_metadata:  both
     embedding:      the words as one vector from a pretrained language model (embed.py)
     embedding_metadata: the vector and the metadata
+
+MotionForecast wraps a trained stage for deployment.
 """
 
+import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -19,6 +22,8 @@ from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 
 METADATA = ["type", "council", "party", "department"]
+# What a caller sends: a Motion as it comes from the parliament, before any features.
+RAW = [*METADATA, "title", "text", "reason"]
 WORDS = "words"
 EMBEDDING = "embedding"
 
@@ -94,3 +99,17 @@ LADDER = {
     "embedding": (embedding, [{"C": C} for C in [0.1, 0.3, 1, 3]]),
     "embedding_metadata": (embedding_metadata, [{"C": C} for C in [0.1, 0.3, 1, 3]]),
 }
+
+
+class MotionForecast(mlflow.pyfunc.PythonModel):
+    """The deployable model: a raw Motion in, its probability of acceptance out.
+
+    The pipeline alone expects the features that inputs() builds. Packing inputs() with
+    it means a caller cannot build them differently from how the model was trained.
+    """
+
+    def __init__(self, pipeline: Pipeline):
+        self.pipeline = pipeline
+
+    def predict(self, context, model_input: pd.DataFrame, params=None) -> np.ndarray:
+        return self.pipeline.predict_proba(inputs(model_input))[:, 1]

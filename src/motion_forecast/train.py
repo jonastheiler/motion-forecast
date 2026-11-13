@@ -7,7 +7,13 @@ Each stage is one MLflow run. Inside it, one nested run per hyperparameter setti
 trained on 2007-2018 and scored on 2019-2022 (validation). The best setting is then
 retrained on 2007-2022 and scored once on 2023 onwards (test), in the stage's own run.
 MLflow stores everything in mlflow.db (SQLite) and the artifacts in mlruns/.
+
+The deployable stage with the best validation score is then logged as a pyfunc model and
+registered as a new version of "motion-forecast". It takes the "champion" alias only if
+it beats the current champion on the test set.
 """
+
+from pathlib import Path
 
 import matplotlib
 
@@ -17,6 +23,9 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
+import sklearn
+from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 from sklearn.calibration import CalibrationDisplay
 from sklearn.metrics import (
     PrecisionRecallDisplay,
@@ -28,12 +37,17 @@ from sklearn.metrics import (
 
 from motion_forecast.data import load
 from motion_forecast.embed import load_embeddings
-from motion_forecast.models import LADDER, inputs
+from motion_forecast.models import LADDER, RAW, MotionForecast, inputs
 
 EXPERIMENT = "model-ladder"
 FIRST = pd.Timestamp("2007-01-01")  # the acceptance rate fell from ~60% in the 1990s
 VALIDATION = pd.Timestamp("2019-01-01")
 TEST = pd.Timestamp("2023-01-01")
+
+MODEL_NAME = "motion-forecast"
+# A deployed model must work from the raw text alone. The embedding stages also need a
+# 470 MB language model at prediction time, so they compete in the ladder only.
+DEPLOYABLE = ["majority", "metadata", "text", "text_metadata"]
 
 
 def periods(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
@@ -99,12 +113,12 @@ def fit_and_score(stage: str, params: dict, fit: pd.DataFrame, evaluate: pd.Data
     mlflow.log_params(params)
     metrics = score(evaluate["label"], p)
     mlflow.log_metrics(metrics)
-    return {"metrics": metrics, "p": p}
+    return {"metrics": metrics, "p": p, "model": model}
 
 
-def run_stage(stage: str, data: dict[str, pd.DataFrame]) -> dict[str, float]:
+def run_stage(stage: str, data: dict[str, pd.DataFrame]) -> dict:
     _, grid = LADDER[stage]
-    with mlflow.start_run(run_name=stage, tags={"stage": stage}):
+    with mlflow.start_run(run_name=stage, tags={"stage": stage}) as run:
         # Choose the hyperparameters on validation, one nested run each.
         results = []
         for params in grid:
@@ -119,7 +133,45 @@ def run_stage(stage: str, data: dict[str, pd.DataFrame]) -> dict[str, float]:
         mlflow.log_figure(fig, "curves.png")
         plt.close(fig)
         mlflow.log_table(by_party(data["test"], result["p"]), "by_party.json")
-        return result["metrics"]
+        validation = min(r[0] for r in results)
+        return result | {"validation_log_loss": validation, "run_id": run.info.run_id}
+
+
+def register(result: dict, example: pd.DataFrame) -> None:
+    """Log the model as a pyfunc in its stage's run, register it, and crown it if it wins."""
+    with mlflow.start_run(run_id=result["run_id"]):
+        info = mlflow.pyfunc.log_model(
+            name="model",
+            python_model=MotionForecast(result["model"]),
+            # Ship the package's code with the model, so loading needs no install of it.
+            code_paths=[str(Path(__file__).parent)],
+            input_example=example,  # also gives the model its input and output schema
+            # Only what the model imports. Left alone, MLflow copies the whole uv.lock,
+            # PyTorch included, into the environment the model is served from.
+            pip_requirements=[
+                f"mlflow=={mlflow.__version__}",
+                f"scikit-learn=={sklearn.__version__}",
+                f"pandas=={pd.__version__}",
+                f"numpy=={np.__version__}",
+            ],
+            registered_model_name=MODEL_NAME,
+        )
+    version = info.registered_model_version
+
+    # Every training registers a version; only a better one takes over the alias that
+    # callers load ("models:/motion-forecast@champion"). Both are scored on the same
+    # test period, so their log losses compare.
+    client = MlflowClient()
+    try:
+        champion = client.get_model_version_by_alias(MODEL_NAME, "champion")
+        to_beat = client.get_run(champion.run_id).data.metrics["log_loss"]
+    except MlflowException:  # no champion yet
+        to_beat = float("inf")
+    if result["metrics"]["log_loss"] < to_beat:
+        client.set_registered_model_alias(MODEL_NAME, "champion", version)
+        print(f"version {version} is the new champion")
+    else:
+        print(f"version {version} registered, the champion stays (log loss {to_beat:.3f})")
 
 
 def main() -> None:
@@ -135,9 +187,14 @@ def main() -> None:
     # little; what matters is logged by hand above, on held-out data only.
     mlflow.set_experiment(EXPERIMENT)
     results = {stage: run_stage(stage, data) for stage in LADDER}
-    table = pd.DataFrame(results).T
+    table = pd.DataFrame({stage: result["metrics"] for stage, result in results.items()}).T
     print("\nTest set (2023 onwards):")
     print(table.round(3).to_string())
+
+    # Choose on validation, not test: the test set stays an honest final check.
+    best = min(DEPLOYABLE, key=lambda stage: results[stage]["validation_log_loss"])
+    print(f"\nbest deployable stage on validation: {best}")
+    register(results[best], data["test"][RAW].head(3))
 
 
 if __name__ == "__main__":

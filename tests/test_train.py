@@ -1,8 +1,9 @@
+import mlflow
 import numpy as np
 import pandas as pd
 import pytest
 
-from motion_forecast.models import LADDER, inputs
+from motion_forecast.models import LADDER, RAW, MotionForecast, inputs
 from motion_forecast.train import periods
 
 
@@ -53,3 +54,14 @@ def test_every_stage_learns_probabilities(stage):
     model = make_model(**grid[0]).fit(inputs(df), df["label"])
     p = model.predict_proba(inputs(df))[:, 1]
     assert ((p > 0) & (p < 1)).all()
+
+
+def test_pyfunc_takes_raw_motions(tmp_path):
+    df = make_motions()
+    make_model, grid = LADDER["text_metadata"]
+    pipeline = make_model(**grid[0]).fit(inputs(df), df["label"])
+    mlflow.pyfunc.save_model(tmp_path / "model", python_model=MotionForecast(pipeline))
+
+    loaded = mlflow.pyfunc.load_model(str(tmp_path / "model"))
+    p = loaded.predict(df[RAW])  # the raw fields only, no features
+    assert np.allclose(p, pipeline.predict_proba(inputs(df))[:, 1])

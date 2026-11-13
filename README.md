@@ -13,9 +13,29 @@ Unofficial. Data: [Swiss Parliament open data web service](https://ws.parl.ch/do
 uv sync
 uv run python -m motion_forecast.data    # download ~20k Motionen and Postulate (~5 min)
 uv run python -m motion_forecast.embed   # embed the texts with a language model (~1 h on a CPU)
-uv run python -m motion_forecast.train   # model ladder, tracked in MLflow (~3 min)
+uv run python -m motion_forecast.train   # model ladder in MLflow, registers the best (~3 min)
 uv run mlflow ui                         # compare the runs at http://localhost:5000
 uv run pytest
+```
+
+Then score a new Motion with the champion model, from its raw fields:
+
+```python
+import mlflow
+import pandas as pd
+
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+model = mlflow.pyfunc.load_model("models:/motion-forecast@champion")
+motion = {
+    "type": "Postulat",
+    "council": "NR",
+    "party": "Mitte",
+    "department": "EDI",
+    "title": "Versorgung mit Medikamenten",
+    "text": "Der Bundesrat wird beauftragt, in einem Bericht darzulegen, ...",
+    "reason": "Lieferengpässe haben zugenommen.",
+}
+print(model.predict(pd.DataFrame([motion])))  # probability that it is accepted
 ```
 
 ## Results so far
@@ -52,6 +72,12 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
   and a per-party table.
 - **Autologging has a cost.** `mlflow.sklearn.autolog()` made each run ~7x slower by
   scoring and plotting the training data, so the code logs only held-out scores.
+- **A pyfunc carries its own preprocessing.** `MotionForecast` wraps the pipeline with
+  `inputs()`, so callers send a Motion as it comes from the parliament. Its environment
+  lists only the four packages it needs; by default MLflow copied the whole lock file.
+- **Registry: every version is kept, one is champion.** Each training registers the
+  stage that wins on validation. It takes the `champion` alias only if it beats the
+  current champion on the test set, so callers loading `@champion` never get a worse one.
 
 ## Status
 
@@ -59,6 +85,6 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
 - [x] M2 baselines and experiment tracking with MLflow
 - [x] M3a sentence embeddings as features
 - [ ] M3b a fine-tuned transformer (needs a GPU)
-- [ ] M4 model registry and pyfunc
+- [x] M4 model registry and pyfunc
 - [ ] M5 serving
 - [ ] M6 weekly live forecast and monitoring
