@@ -13,7 +13,7 @@ Unofficial. Data: [Swiss Parliament open data web service](https://ws.parl.ch/do
 uv sync
 uv run python -m motion_forecast.data    # download ~20k Motionen and Postulate (~5 min)
 uv run python -m motion_forecast.embed   # embed the texts with a language model (~1 h on a CPU)
-uv run python -m motion_forecast.train   # model ladder in MLflow, registers the best (~3 min)
+uv run python -m motion_forecast.train   # model ladder in MLflow, registers the best (~5 min)
 uv run mlflow ui                         # compare the runs at http://localhost:5000
 uv run pytest
 ```
@@ -37,6 +37,21 @@ motion = {
 }
 print(model.predict(pd.DataFrame([motion])))  # probability that it is accepted
 ```
+
+Or serve the champion over HTTP. MLflow builds a fresh environment from the model's own
+requirements, so the server runs without this project installed:
+
+```
+uv run mlflow models serve -m models:/motion-forecast@champion --env-manager uv -p 5001
+
+curl http://127.0.0.1:5001/invocations -H "Content-Type: application/json" -d '{
+  "dataframe_records": [{"type": "Motion", "council": "NR", "party": "SVP",
+    "department": "EDI", "title": "Weniger Vorschriften",
+    "text": "Der Bundesrat wird beauftragt, ...", "reason": "..."}]}'
+# {"predictions": [0.074...]}
+```
+
+The alias is read at start-up: restart the server to pick up a new champion.
 
 ## Results so far
 
@@ -78,6 +93,9 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
 - **Registry: every version is kept, one is champion.** Each training registers the
   stage that wins on validation. It takes the `champion` alias only if it beats the
   current champion on the test set, so callers loading `@champion` never get a worse one.
+- **Serving needs no server code.** `mlflow models serve` turns the pyfunc into an HTTP
+  API that checks each request against the model's schema. `tests/test_serve.py` checks
+  that contract in-process, without starting a server.
 
 ## Status
 
@@ -86,5 +104,5 @@ to weigh. Fine-tuning the language model on the labels is the next step to test.
 - [x] M3a sentence embeddings as features
 - [ ] M3b a fine-tuned transformer (needs a GPU)
 - [x] M4 model registry and pyfunc
-- [ ] M5 serving
+- [x] M5 serving
 - [ ] M6 weekly live forecast and monitoring
